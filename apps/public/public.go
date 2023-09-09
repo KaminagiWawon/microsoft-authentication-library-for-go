@@ -26,6 +26,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -124,6 +125,38 @@ func New(clientID string, options ...Option) (Client, error) {
 	opts := clientOptions{
 		authority:  base.AuthorityPublicCloud,
 		httpClient: shared.DefaultClient,
+	}
+
+	for _, o := range options {
+		o(&opts)
+	}
+	if err := opts.validate(); err != nil {
+		return Client{}, err
+	}
+
+	base, err := base.New(clientID, opts.authority, oauth.New(opts.httpClient), base.WithCacheAccessor(opts.accessor), base.WithClientCapabilities(opts.capabilities), base.WithInstanceDiscovery(!opts.disableInstanceDiscovery))
+	if err != nil {
+		return Client{}, err
+	}
+	return Client{base}, nil
+}
+
+// New is the constructor for Client with forwardProxy.
+func NewWithProxy(clientID string, proxyURL string, options ...Option) (Client, error) {
+	returnClient := func(proxy string) *http.Client {
+		client := shared.DefaultClient
+		if proxy != "" {
+			proxyURL, err := url.Parse(proxy)
+			if err == nil {
+				client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+			}
+		}
+		return client
+	}
+
+	opts := clientOptions{
+		authority:  base.AuthorityPublicCloud,
+		httpClient: returnClient(proxyURL),
 	}
 
 	for _, o := range options {
